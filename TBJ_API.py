@@ -1082,28 +1082,52 @@ class Coins2User(threading.Thread):
         grab_finished = 0
         last_total_score = process_dict["total_score"]
 
+        left_coins = 0
+        fall_coins = 0
+        fall_time = 0
+
         logger.debug("Coins2User")
         while True:
             coins = process_dict["coins_count"]
             can_check_score = process_dict["can_check_score"]
             check_score_coins_count = process_dict["check_score_coins_count"]
+            
+            cur_time = time.time()
+            if left_coins == 0:
+                left_coins = coins
+                fall_coins += coins
+
+            if room_info['roomid'] is not None and fall_coins > 0 and fall_time + 1 < cur_time:
+                logger.debug('return_room_opt--fallcoins: ' + str(fall_coins))
+                msg = {}
+                msg['action'] = 'room_opt'
+                msg['event'] = 'fallcoins_event'
+                msg['room_id'] = room_info['roomid']
+                msg['coins'] = fall_coins
+                msg['ts'] = str(int(cur_time * 1000))
+                web_socket_thread.send_message(json.dumps(msg), "return_room_opt")
+                logger.debug("handle_tbj_type msg: " + str(msg))
+                fall_coins = 0
+                fall_time = cur_time
+
             if playing is False:
                 process_dict["coins_count"] = process_dict["coins_count"] - coins
                 process_dict["can_check_score"] = 0
                 process_dict["check_score_coins_count"] = (
                     process_dict["check_score_coins_count"] - check_score_coins_count
                 )
+                left_coins = process_dict['coins_count']
                 continue
 
             if playing is True and coins > 0 and last_time == 0:
-                last_time = int(time.time() * 1000)
-            now_time = int(time.time() * 1000)
+                last_time = int(cur_time * 1000)
+            now_time = int(cur_time * 1000)
 
             if playing is True and end_play is True:
                 playing = False
                 grab_finished = 1
 
-            win_coin = {"coins": str(coins), "time": int(time.time() * 1000)}
+            win_coin = {"coins": str(coins), "time": int(cur_time * 1000)}
             if grab_finished == 1:
                 logger.debug("Coins2User--grab_finished--win coins: " + str(win_coin))
                 if countdown_time > 0 and coins > 0:
@@ -1115,6 +1139,7 @@ class Coins2User(threading.Thread):
                 process_dict["coins_count"] = process_dict["coins_count"] - coins
                 last_time = now_time
                 grab_finished = 0
+                left_coins = process_dict['coins_count']
             elif playing is True and now_time - last_time > 1000:
                 if coins > 0 and grab_finished == 0:
                     logger.debug("Coins2User--win coins: " + str(win_coin))
@@ -1125,6 +1150,7 @@ class Coins2User(threading.Thread):
                     return_room_info(coins, grab_finished)
                 process_dict["coins_count"] = process_dict["coins_count"] - coins
                 last_time = now_time
+                left_coins = process_dict['coins_count']
 
             gpio_low_start_time = process_dict["gpio_low_start_time"]
             if gpio_low_start_time > 0:
